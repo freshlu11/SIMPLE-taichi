@@ -38,7 +38,7 @@ $$
 
 初始化：
 
-![初始化阶段](./images/bicgstab_init.png)
+![初始化阶段](./images/BICGSTAB_init.png)
 
 迭代：
 
