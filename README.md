@@ -12,7 +12,7 @@ SIMPLE-taichi is an incompressible fluid solver implementing the [SIMPLE method]
 ## Demo
 As a concrete validation, the computation results of a lid-driven cavity case are compared with the well-know literature values.
 
-![live-plot-1](./images/live-plot-1.png)
+![Re=100](./images/live-plot--Re=100.png)
 
 ## 压力修正法
 
@@ -22,7 +22,7 @@ $$
 a_W = \rho_e d_e \Delta y = \rho_e {A_e \over a_n} \Delta y = \rho \Delta y \Delta y / a_w
 $$
 
-![交错网格](./images/staggered grid.png)
+![交错网格](./images/staggeredGrid.png)
 
 ## 求解代数方程
 
@@ -36,11 +36,17 @@ $$
 
 稳定双共轭梯度求解动量守恒的离散方程
 
-![初始化阶段](./images/bicgstab-init.png)
+初始化：
+
+![初始化阶段](./images/bicgstab_init.png)
+
+迭代：
 
 ![迭代阶段](./images/BICGSTAB-iter1.png)
 
 ![迭代阶段](./images/BICGSTAB-iter2.png)
+
+部分公式：
 $$
 rho = \bold r^T_k \bold r_k  \\
 alpha\_lower = \bold p^T_k \bold A \bold p_k \\
