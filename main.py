@@ -1,5 +1,16 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@Time    :   2022/12/14 14:16:35
+@modified  :   Lu Zhanglin
+
+code aim to: 2D顶盖驱动空腔流模拟-交错网格离散格式
+
+离散方程求解方法: 双向共轭梯度法
+"""
+
+
 import taichi as ti
-import numpy as np
 from display import Display
 from cgsolver import CGSolver
 from bicgsolver import BICGSolver
@@ -30,6 +41,7 @@ class SIMPLESolver:
         rho (float): density of flow, set to 1.0
         mu (float): dynamic viscosity, set to 0.01
         dt (float): discrete time, set to 1e16
+        Re (float): Re = \rho ·v·L / mu
     """
 
     def __init__(self, lx, ly, nx, ny):
@@ -43,8 +55,8 @@ class SIMPLESolver:
         self.rho = 1.00
         # 摩擦力
         self.mu = 0.01
-        # 1/50/0.01=2 1 m/s时雷诺数=2
-        Re = 1 * self.dx / self.mu * self.rho
+        # 1/0.01=100 1 m/s时雷诺数=100
+        self.Re = self.rho * 1 * self.lx / self.mu
         self.dt = 1e16
 
         """对于正交网格, 建议 alpha_u + alpha_p = c, c取1或1.1
@@ -60,7 +72,7 @@ class SIMPLESolver:
         # 速度场
         self.u = ti.field(dtype=float, shape=(nx+3, ny+2))
         self.v = ti.field(dtype=float, shape=(nx+2, ny+3))
-        # TODO
+        # 离散方程 迭代求解出的速度
         self.u_mid = ti.field(dtype=float, shape=(nx+3, ny+2))
         self.v_mid = ti.field(dtype=float, shape=(nx+2, ny+3))
 
@@ -72,13 +84,14 @@ class SIMPLESolver:
         self.p = ti.field(dtype=float, shape=(nx+2, ny+2))
         # 压力修正值 p'
         self.pcor = ti.field(dtype=float, shape=(nx+2, ny+2))
-        # TODO
+        # 未使用
         self.pcor_mid = ti.field(dtype=float, shape=(nx+2, ny+2))
         # 连续性方程残差
         self.mdiv = ti.field(dtype=float, shape=(nx+2, ny+2))
         # 边界条件, 各边界的法向速度和切向速度
         self.bc = {'w': [0.0, 0.0], 'e': [0.0, 0.0],
                    'n': [0.0, 0.0], 's': [0.0, 0.0]}
+        # unused
         self.ct = ti.field(dtype=float, shape=(nx+2, ny+2))   # Cell type
 
         # 分别对u、v控制容积积分, 标准离散格式代数方程下, 中心和四周 5个点的系数和偏置项
@@ -279,10 +292,10 @@ class SIMPLESolver:
         """SIMPLE step3 - 动量守恒方程离散求解
 
         Args:
-            n_iter (_type_): _description_
+            n_iter (int): 内迭代次数?
 
         Returns:
-            _type_: _description_
+            ti.f64: 动量守恒残差
         """
         residual = 0.0
         for i in range(n_iter):
@@ -290,17 +303,20 @@ class SIMPLESolver:
             self.compute_coef_u()
             self.compute_coef_v()
             self.set_bc()
-            self.u_momentum_solver.update_coef(
-                self.coef_u, self.b_u, self.u_mid)
+            # self.u_momentum_solver.update_coef(
+            #     self.coef_u, self.b_u, self.u_mid)
+            # 迭代求解出速度u, 存在self.u_mid
             self.u_momentum_solver.solve(eps=1e-4, quiet=True)
-            self.v_momentum_solver.update_coef(
-                self.coef_v, self.b_v, self.v_mid)
+            # self.v_momentum_solver.update_coef(
+            #     self.coef_v, self.b_v, self.v_mid)
+            # 迭代求解出速度v, 存在self.v_mid
             self.v_momentum_solver.solve(eps=1e-4, quiet=True)
             residual = self.update_velocity()
         return residual
 
     @ti.kernel
     def update_velocity(self) -> ti.f64:
+        """对代数方程的速度解进行亚松驰存到self.u 、self.v 并计算动量方程残差"""
         nx, ny, dx, dy = self.nx, self.ny, self.dx, self.dy
         max_udiff = 0.0
         max_vdiff = 0.0
@@ -308,7 +324,8 @@ class SIMPLESolver:
         for i, j in ti.ndrange((2, nx+1), (1, ny+1)):
             if ti.abs(self.u_mid[i, j] - self.u[i, j]) > max_udiff:
                 max_udiff = ti.abs(self.u_mid[i, j] - self.u[i, j])
-            # u^new = α_u·u + (1 - α_u)·u^(n-1),  u^(n-1)为上一次迭代的值
+            # u^new = α_u·u^n + (1 - α_u)·u^(n-1),  u^(n-1)为上一次迭代的最终值, 即self.u
+            # u^n 为本次迭代中动量方程的解
             self.u[i, j] = self.alpha_m * self.u_mid[i, j] + \
                 (1 - self.alpha_m) * self.u[i, j]
         for i, j in ti.ndrange((1, nx+1), (2, ny+1)):
@@ -325,7 +342,8 @@ class SIMPLESolver:
             eps (_type_): _description_
         """
         self.compute_coef_p()
-        self.p_correction_solver.update_coef(self.coef_p, self.b_p, self.pcor)
+        # self.p_correction_solver.update_coef(self.coef_p, self.b_p, self.pcor)
+        # 求解出p‘, 存在self.pcor
         self.p_correction_solver.solve(eps, quiet=True)
 
     @ti.kernel
